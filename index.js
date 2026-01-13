@@ -1,30 +1,45 @@
 import express from "express";
 import fetch from "node-fetch";
+import fs from "fs";
 
 const app = express();
 app.use(express.json());
 
-// 🔐 TU TOKEN (ya funciona)
 const TOKEN = "8559693091:AAFduFR38wbrIUDJO6cfOrPC9m4vL5TP69A";
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
+const STATE_FILE = "./state.json";
 
-// 🧠 ESTADO DEL BOT (simple)
-let botOn = false;
-let autoMessage = "Estoy fuera de la oficina";
+// 📦 Leer estado
+function loadState() {
+  try {
+    const data = fs.readFileSync(STATE_FILE, "utf8");
+    return JSON.parse(data);
+  } catch {
+    return {
+      botOn: false,
+      autoMessage: "Estoy fuera de la oficina"
+    };
+  }
+}
+
+// 💾 Guardar estado
+function saveState(state) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+// Estado inicial
+let state = loadState();
 
 // 📤 Enviar mensaje
 async function sendMessage(chatId, text) {
   await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text
-    })
+    body: JSON.stringify({ chat_id: chatId, text })
   });
 }
 
-// 📥 Webhook Telegram
+// 📥 Webhook
 app.post("/telegram", async (req, res) => {
   const msg = req.body.message;
   if (!msg) return res.sendStatus(200);
@@ -32,30 +47,33 @@ app.post("/telegram", async (req, res) => {
   const chatId = msg.chat.id;
   const text = msg.text || "";
 
-  console.log("Mensaje recibido:", text);
+  console.log("Mensaje:", text);
 
   // /start
   if (text === "/start") {
     await sendMessage(
       chatId,
       "🤖 Bot Out of Office\n\n" +
-      "Usa:\n" +
-      "/on TU MENSAJE → activar\n" +
+      "/on MENSAJE → activar\n" +
       "/off → desactivar\n" +
-      "/status → ver estado"
+      "/status → estado"
     );
   }
 
-  // /on mensaje
+  // /on
   else if (text.startsWith("/on")) {
-    botOn = true;
-    autoMessage = text.replace("/on", "").trim() || autoMessage;
-    await sendMessage(chatId, `✅ Activado\nMensaje:\n"${autoMessage}"`);
+    state.botOn = true;
+    state.autoMessage =
+      text.replace("/on", "").trim() || state.autoMessage;
+    saveState(state);
+
+    await sendMessage(chatId, "✅ Activado\nMensaje:\n" + state.autoMessage);
   }
 
   // /off
   else if (text === "/off") {
-    botOn = false;
+    state.botOn = false;
+    saveState(state);
     await sendMessage(chatId, "❌ Bot desactivado");
   }
 
@@ -63,22 +81,22 @@ app.post("/telegram", async (req, res) => {
   else if (text === "/status") {
     await sendMessage(
       chatId,
-      botOn
-        ? `🟢 ACTIVO\nMensaje:\n"${autoMessage}"`
+      state.botOn
+        ? `🟢 ACTIVO\nMensaje:\n${state.autoMessage}`
         : "🔴 INACTIVO"
     );
   }
 
   // Mensaje normal
-  else if (botOn) {
-    await sendMessage(chatId, autoMessage);
+  else if (state.botOn) {
+    await sendMessage(chatId, state.autoMessage);
   }
 
   res.sendStatus(200);
 });
 
-// 🚀 Render escucha aquí
+// 🚀 Start
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Bot escuchando en puerto", PORT);
+  console.log("Bot activo en puerto", PORT);
 });
