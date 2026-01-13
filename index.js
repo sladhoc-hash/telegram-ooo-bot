@@ -1,42 +1,84 @@
-const express = require("express");
-const fetch = require("node-fetch");
+import express from "express";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-// 🔑 TU TOKEN (ya incluido)
+// 🔐 TU TOKEN (ya funciona)
 const TOKEN = "8559693091:AAFduFR38wbrIUDJO6cfOrPC9m4vL5TP69A";
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 
-// Mensaje automático
-const AUTO_REPLY = "🚫 Estoy fuera de la oficina. Te responderé cuando vuelva.";
+// 🧠 ESTADO DEL BOT (simple)
+let botOn = false;
+let autoMessage = "Estoy fuera de la oficina";
 
+// 📤 Enviar mensaje
+async function sendMessage(chatId, text) {
+  await fetch(`${TELEGRAM_API}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text
+    })
+  });
+}
+
+// 📥 Webhook Telegram
 app.post("/telegram", async (req, res) => {
-  try {
-    const message = req.body.message;
+  const msg = req.body.message;
+  if (!msg) return res.sendStatus(200);
 
-    if (!message || !message.chat) {
-      return res.sendStatus(200);
-    }
+  const chatId = msg.chat.id;
+  const text = msg.text || "";
 
-    await fetch(`${TELEGRAM_API}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: message.chat.id,
-        text: AUTO_REPLY
-      })
-    });
+  console.log("Mensaje recibido:", text);
 
-    res.sendStatus(200);
-  } catch (error) {
-    console.error("Error:", error);
-    res.sendStatus(500);
+  // /start
+  if (text === "/start") {
+    await sendMessage(
+      chatId,
+      "🤖 Bot Out of Office\n\n" +
+      "Usa:\n" +
+      "/on TU MENSAJE → activar\n" +
+      "/off → desactivar\n" +
+      "/status → ver estado"
+    );
   }
+
+  // /on mensaje
+  else if (text.startsWith("/on")) {
+    botOn = true;
+    autoMessage = text.replace("/on", "").trim() || autoMessage;
+    await sendMessage(chatId, `✅ Activado\nMensaje:\n"${autoMessage}"`);
+  }
+
+  // /off
+  else if (text === "/off") {
+    botOn = false;
+    await sendMessage(chatId, "❌ Bot desactivado");
+  }
+
+  // /status
+  else if (text === "/status") {
+    await sendMessage(
+      chatId,
+      botOn
+        ? `🟢 ACTIVO\nMensaje:\n"${autoMessage}"`
+        : "🔴 INACTIVO"
+    );
+  }
+
+  // Mensaje normal
+  else if (botOn) {
+    await sendMessage(chatId, autoMessage);
+  }
+
+  res.sendStatus(200);
 });
 
-// Puerto requerido por Render
+// 🚀 Render escucha aquí
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Bot activo en puerto", PORT);
+  console.log("Bot escuchando en puerto", PORT);
 });
